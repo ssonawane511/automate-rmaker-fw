@@ -1,0 +1,183 @@
+name: automate code and build
+
+on:
+  repository_dispatch:
+    types: [build-trigger]
+
+jobs:
+  process-webhook:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout the builder repository
+        uses: actions/checkout@v2
+        with:
+          repository: ssonawane511/rmaker-builder
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          # Install npm dependencies (assuming package.json is in the root)
+          npm install
+
+      - name: Process Webhook Payload
+        run: |
+          echo "Received event data: ${{ toJson(github.event.client_payload) }}"
+
+      - name: Run Custom Script with Payload
+        run: |
+          node build.js ${{ toJson(github.event.client_payload.node) }}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: artifacts/
+
+  process-artifacts:
+    needs: process-webhook  # This job will run after the `process-webhook` job completes
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: build-artifacts
+
+      - name: Checkout Project Template Repository
+        uses: actions/checkout@v2
+        with:
+          repository: ssonawane511/fw-rmaker-template
+          token: ${{ secrets.GH_PAT }}
+          path: project
+               
+      - name: Copy Build Artifacts
+        run: |
+          cd project/main
+          cp -r ../../build-artifacts/* .
+          echo "All files copied to project/main successfully"
+      
+      - name: Upload Project as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: project-artifact  
+          path: project/  
+
+  build-artifact:
+    name: Build FW
+    needs: process-artifacts
+    strategy:
+      fail-fast: false
+      matrix:
+        # choose the version of ESP-IDF to use for the build
+        idf-branch:
+          # - release-v5.0
+          - release-v5.1
+          # - latest
+        # choose the target to build for
+        target:
+          - esp32
+          # - esp32c3
+    runs-on: ubuntu-22.04
+    container:
+      image: espressif/idf:${{ matrix.idf-branch }}
+    steps: 
+    
+      - name: Install Python Dependencies
+        run: |
+          . $IDF_PATH/export.sh
+          python -m pip install idf-build-apps
+
+      - name: Download project Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: project-artifact
+          path: project/
+                   
+      - name: Build Test Application with ESP-IDF
+        run: |
+          ls
+          . $IDF_PATH/export.sh
+          idf-build-apps build \
+            -p project \
+            --target ${{ matrix.target }} \
+            --build-dir build_${{ matrix.target }}_${{ matrix.idf-branch }}
+
+      - name: Upload files to artifacts for run-target job
+        uses: actions/upload-artifact@v3
+        with:
+          name: built_binaries
+          path: |
+            **/build**/bootloader/bootloader.bin
+            **/build**/partition_table/partition-table.bin
+            **/build**/*.bin
+            **/build**/flasher_args.json
+          if-no-files-found: error
+
+  publish-artifacts:
+    name: Publish Artifacts to Public Repository
+    needs: build-artifact
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout the Public Repository
+        uses: actions/checkout@v2
+        with:
+          repository: ssonawane511/automate-artifacts
+          token: ${{ secrets.GH_TOKEN }}
+          path: automate-artifacts
+          
+      - name: Download project Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: project-artifact
+          path: project-artifact/
+      
+      - name: Download project builds
+        uses: actions/download-artifact@v3
+        with:
+          name: built_binaries
+          path: built_binaries/
+          
+      - name: Create Unique ID for Filename
+        id: unique_id
+        run: |
+          # Generate a unique ID using timestamp or UUID
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          echo "unique_id=${{ github.event.client_payload.user }}_$TIMESTAMP" >> $GITHUB_ENV
+
+      - name: Copy Built Artifacts to Public Repository
+        run: |
+          # Copy the artifacts to the public repository folder
+          mkdir -p automate-artifacts/${{ env.unique_id }}
+          cp -r project-artifact automate-artifacts/${{ env.unique_id }}/
+          cp -r built_binaries automate-artifacts/${{ env.unique_id }}/
+      
+      - name: Zip the Unique ID Folder
+        run: |
+          # Zip the entire unique ID folder
+          zip -r automate-artifacts/${{ env.unique_id }}.zip automate-artifacts/${{ env.unique_id }}
+          rm -rf automate-artifacts/${{ env.unique_id }}
+          echo "Directory ${{ env.unique_id }} zipped successfully."
+
+      - name: Commit and Push Artifacts to Public Repository
+        run: |
+          cd automate-artifacts
+          
+          git config user.name "ssonawane511"
+          git config user.email "ssonawane511@gmail.com"          
+          
+          # Add all new files to git
+          git add .
+          git commit -m "Add build artifacts for ${{ env.unique_id }}"
+          # Push the changes back to the public repository
+          git push origin main
+
+    
+          
