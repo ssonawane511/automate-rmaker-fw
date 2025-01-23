@@ -130,7 +130,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: ssonawane511/automate-artifacts
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
           path: automate-artifacts
           
       - name: Download project Artifacts
