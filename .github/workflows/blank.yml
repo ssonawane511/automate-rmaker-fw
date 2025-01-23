@@ -5,6 +5,19 @@ on:
     types: [build-trigger]
 
 jobs:
+  notify-workflow:
+    runs-on: ubuntu-22.04
+    steps: 
+      - name: Log Run ID
+        run: echo "Current Workflow Run ID - ${{ github.run_id }}"
+
+      - name: Run curl command
+        run: |
+          curl -X POST \
+              -H "Content-Type: application/json" \
+              -d '{ "runnerID": "${{ github.run_id }}", "userId": "${{ github.event.client_payload.userId }}" }' \
+              ${{ secrets.AUTOMATE_WEBHOOK }}
+
   process-webhook:
     runs-on: ubuntu-22.04
 
