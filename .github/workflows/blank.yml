@@ -22,7 +22,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Install npm dependencies (assuming package.json is in the root)
           npm install
 
       - name: Process Webhook Payload
@@ -34,18 +33,18 @@ jobs:
           node build.js ${{ toJson(github.event.client_payload.node) }}
 
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
           path: artifacts/
 
   process-artifacts:
-    needs: process-webhook  # This job will run after the `process-webhook` job completes
+    needs: process-webhook
     runs-on: ubuntu-22.04
 
     steps:
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build-artifacts
           path: build-artifacts
@@ -64,10 +63,10 @@ jobs:
           echo "All files copied to project/main successfully"
       
       - name: Upload Project as Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: project-artifact  
-          path: project/  
+          path: project/
 
   build-artifact:
     name: Build FW
@@ -75,27 +74,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # choose the version of ESP-IDF to use for the build
         idf-branch:
-          # - release-v5.0
           - release-v5.1
-          # - latest
-        # choose the target to build for
         target:
           - esp32
-          # - esp32c3
     runs-on: ubuntu-22.04
     container:
       image: espressif/idf:${{ matrix.idf-branch }}
     steps: 
-    
       - name: Install Python Dependencies
         run: |
           . $IDF_PATH/export.sh
           python -m pip install idf-build-apps
 
       - name: Download project Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: project-artifact
           path: project/
@@ -110,7 +103,7 @@ jobs:
             --build-dir build_${{ matrix.target }}_${{ matrix.idf-branch }}
 
       - name: Upload files to artifacts for run-target job
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: built_binaries
           path: |
@@ -134,13 +127,13 @@ jobs:
           path: automate-artifacts
           
       - name: Download project Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: project-artifact
           path: project-artifact/
       
       - name: Download project builds
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: built_binaries
           path: built_binaries/
@@ -148,20 +141,17 @@ jobs:
       - name: Create Unique ID for Filename
         id: unique_id
         run: |
-          # Generate a unique ID using timestamp or UUID
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           echo "unique_id=${{ github.event.client_payload.user }}_$TIMESTAMP" >> $GITHUB_ENV
 
       - name: Copy Built Artifacts to Public Repository
         run: |
-          # Copy the artifacts to the public repository folder
           mkdir -p automate-artifacts/${{ env.unique_id }}
           cp -r project-artifact automate-artifacts/${{ env.unique_id }}/
           cp -r built_binaries automate-artifacts/${{ env.unique_id }}/
       
       - name: Zip the Unique ID Folder
         run: |
-          # Zip the entire unique ID folder
           zip -r automate-artifacts/${{ env.unique_id }}.zip automate-artifacts/${{ env.unique_id }}
           rm -rf automate-artifacts/${{ env.unique_id }}
           echo "Directory ${{ env.unique_id }} zipped successfully."
@@ -169,15 +159,9 @@ jobs:
       - name: Commit and Push Artifacts to Public Repository
         run: |
           cd automate-artifacts
-          
           git config user.name "ssonawane511"
-          git config user.email "ssonawane511@gmail.com"          
-          
-          # Add all new files to git
+          git config user.email "ssonawane511@gmail.com"
+          git pull
           git add .
           git commit -m "Add build artifacts for ${{ env.unique_id }}"
-          # Push the changes back to the public repository
           git push origin main
-
-    
-          
