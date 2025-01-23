@@ -15,7 +15,7 @@ jobs:
         run: |
           curl -X POST \
               -H "Content-Type: application/json" \
-              -d '{ "runnerID": "${{ github.run_id }}", "userId": "${{ github.event.client_payload.userId }}" }' \
+              -d '{ "runnerID": "${{ github.run_id }}", "userId": "${{ github.event.client_payload.userId }}", "projectId": "${{ github.event.client_payload.projectId }}" }' \
               ${{ secrets.AUTOMATE_WEBHOOK }}
 
   process-webhook:
