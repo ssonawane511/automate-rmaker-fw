@@ -129,7 +129,7 @@ jobs:
       - name: Checkout the Public Repository
         uses: actions/checkout@v2
         with:
-          repository: ssonawane511/automate-artifacts
+          repository: ssonawane511/automate-rmaker-fw
           token: ${{ secrets.GH_PAT }}
           path: automate-artifacts
           
